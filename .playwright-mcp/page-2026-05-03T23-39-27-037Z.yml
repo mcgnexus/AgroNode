@@ -1,0 +1,7 @@
+- generic [active] [ref=e1]:
+  - heading "Estado HTTP 404 -" [level=1] [ref=e2]
+  - paragraph [ref=e4]: type Informe de estado
+  - paragraph [ref=e5]: mensaje
+  - paragraph [ref=e6]: descripción El recurso requerido no está disponible.
+  - separator [ref=e7]
+  - heading "Apache Tomcat/8.0.32" [level=3] [ref=e8]

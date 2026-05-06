@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TriggerSource {
+  TELEGRAM
+  WHATSAPP
+  DASHBOARD_MANUAL
+  CRON
+}
+
+model Parcel {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  latitude  Float
+  longitude Float
+  cropType  String
+  locationId      String?
+  municipioId    String?
+  municipioNombre String?
+  zone            String?
+  microclimate    String?
+  description    String?
+  irrigationType  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sensorData            SensorData[]
+  weatherForecasts      WeatherForecast[]
+  aemetHourlyForecasts  AemetHourlyForecast[]
+  aiInteractionLogs     AiInteractionLog[]
+}
+
+model SensorData {
+  id                   String   @id @default(cuid())
+  parcelId             String   @db.Uuid
+  timestamp            DateTime
+  ambientTemp          Float
+  ambientHumidity      Float
+  atmosphericPressure  Float
+  leafTemp             Float
+  soilHumidity         Float
+  batteryLevel         Float?
+  rssi                 Int?
+  createdAt            DateTime @default(now())
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, timestamp])
+}
+
+model WeatherForecast {
+  id               String   @id @default(cuid())
+  parcelId         String   @db.Uuid
+  forecastDate     DateTime
+  maxTemp          Float
+  minTemp          Float
+  precipitationProb Int
+  et0              Float
+  source           String   @default("open-meteo")
+  fetchedAt        DateTime @default(now())
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelId, forecastDate, source])
+}
+
+model AemetHourlyForecast {
+  id               String   @id @default(cuid())
+  parcelId         String   @db.Uuid
+  municipioId      String
+  municipioNombre  String
+  forecastDate     DateTime
+  hour             Int
+  temperature      Float?
+  precipitationProb Float?
+  humidity         Float?
+  windSpeed        Float?
+  windDirection    String?
+  skyState         String?
+  fetchedAt        DateTime @default(now())
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelId, forecastDate, hour])
+  @@index([parcelId, forecastDate])
+}
+
+model AiInteractionLog {
+  id            String        @id @default(uuid()) @db.Uuid
+  parcelId      String        @db.Uuid
+  timestamp     DateTime
+  triggerSource TriggerSource
+  injectedContext Json
+  prompt        String        @db.Text
+  llmResponse   String        @db.Text
+  tokensUsed    Int?
+  createdAt     DateTime      @default(now())
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+}

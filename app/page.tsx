@@ -1,65 +1,236 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import ParcelModal from "@/app/components/parcel-modal";
+import NavHeader from "@/app/components/nav-header";
+
+interface Parcel {
+  id: string;
+  name: string;
+  cropType: string;
+  latitude: number;
+  longitude: number;
+  locationId: string | null;
+  municipioId: string | null;
+  municipioNombre: string | null;
+  zone: string | null;
+  microclimate: string | null;
+  description: string | null;
+  irrigationType: string | null;
+  createdAt: string | Date;
+  totalReadings: number;
+  lastReading: {
+    timestamp: string | Date;
+    ambientTemp: number;
+    ambientHumidity: number;
+    soilHumidity: number;
+    batteryLevel: number | null;
+  } | null;
+}
+
+export default function DashboardPage() {
+  const [parcels, setParcels] = useState<Parcel[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const fetchParcels = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/parcels");
+      const data = await response.json();
+      setParcels(data);
+    } catch (error) {
+      console.error("Error fetching parcels:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchParcels();
+  }, []);
+
+  const totalReadings = parcels.reduce((sum, p) => sum + p.totalReadings, 0);
+  const activeSensors = parcels.filter((p) => p.totalReadings > 0).length;
+
+  const getTimeAgo = (date: Date | string): string => {
+    const now = new Date();
+    const d = new Date(date);
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return "ahora mismo";
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `hace ${diffH}h`;
+    const diffD = Math.floor(diffH / 24);
+    return `hace ${diffD}d`;
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`¿Eliminar parcela "${name}"?`)) return;
+
+    try {
+      const response = await fetch(`/api/parcels/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Error al eliminar");
+      fetchParcels();
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Error al eliminar la parcela");
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <>
+      <NavHeader />
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
+              Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              Monitoreo agrícola en tiempo real
+            </p>
+          </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            + Nueva parcela
+          </button>
         </div>
+
+        <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">Parcelas</p>
+            <p className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
+              {parcels.length}
+            </p>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">Lecturas totales</p>
+            <p className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
+              {totalReadings.toLocaleString()}
+            </p>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">Sensores activos</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {activeSensors}
+            </p>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">Estado</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              Online
+            </p>
+          </div>
+        </div>
+
+        <h2 className="mb-4 text-lg font-semibold text-zinc-800 dark:text-zinc-100">
+          Parcelas
+        </h2>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-zinc-500">Cargando...</div>
+        ) : parcels.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              No hay parcelas registradas. Crea una nueva parcela para comenzar.
+            </p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="mt-4 rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700"
+            >
+              Crear parcela
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {parcels.map((parcel) => (
+              <div key={parcel.id}>
+                <Link href={`/parcels/${parcel.id}`}>
+                  <div className="group cursor-pointer rounded-xl border border-zinc-200 bg-white p-5 transition-all hover:border-green-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-green-800">
+                    <div className="mb-3 flex items-start justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-800 group-hover:text-green-700 dark:text-zinc-200 dark:group-hover:text-green-400">
+                          {parcel.name}
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {parcel.cropType}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        {parcel.totalReadings} lecturas
+                      </span>
+                    </div>
+
+                    {parcel.zone && (
+                      <div className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
+                          {parcel.zone === "altiplano"
+                            ? "Altiplano"
+                            : "Costa Tropical"}
+                        </span>
+                        {parcel.municipioNombre && (
+                          <span className="ml-1">{parcel.municipioNombre}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {parcel.lastReading ? (
+                      <div className="grid grid-cols-3 gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                        <div>
+                          <p className="text-xs text-zinc-400">Temp</p>
+                          <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                            {parcel.lastReading.ambientTemp}°C
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-400">Humedad</p>
+                          <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                            {parcel.lastReading.ambientHumidity}%
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-400">Suelo</p>
+                          <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                            {parcel.lastReading.soilHumidity}%
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-zinc-400">Sin lecturas</p>
+                    )}
+                  </div>
+                </Link>
+
+                <div className="mt-2 flex gap-2">
+                  <Link
+                    href={`/parcels/${parcel.id}`}
+                    className="flex-1 rounded border border-zinc-300 py-1 text-center text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    Ver
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(parcel.id, parcel.name)}
+                    className="flex-1 rounded border border-red-200 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </main>
-    </div>
+
+      <ParcelModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={fetchParcels}
+      />
+    </>
   );
 }
