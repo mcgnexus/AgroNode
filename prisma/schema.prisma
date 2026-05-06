@@ -34,6 +34,7 @@ model Parcel {
   weatherForecasts      WeatherForecast[]
   aemetHourlyForecasts  AemetHourlyForecast[]
   aiInteractionLogs     AiInteractionLog[]
+  raifNotificationLogs  RaifNotificationLog[]
 }
 
 model SensorData {
@@ -103,4 +104,37 @@ model AiInteractionLog {
   createdAt     DateTime      @default(now())
 
   parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+}
+
+model RaifAlertCache {
+  id        String   @id @default(cuid())
+  title     String
+  url       String?
+  source    String
+  alertDate String
+  province  String?
+  crop      String?
+  scrapedAt DateTime @default(now())
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([province, crop, scrapedAt])
+  @@unique([title, url, province, crop])
+}
+
+model RaifNotificationLog {
+  id           String   @id @default(cuid())
+  parcelId     String   @db.Uuid
+  signature    String
+  alertTitle   String
+  sentDay      String
+  channelsSent Int      @default(0)
+  sentAt       DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, sentAt])
+  @@unique([parcelId, signature, sentDay])
 }

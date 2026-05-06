@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import ParcelModal from "@/app/components/parcel-modal";
 import NavHeader from "@/app/components/nav-header";
+import { syncRaifAlerts, type RaifSyncResult } from "@/app/actions/sync-raif";
 
 interface Parcel {
   id: string;
@@ -33,6 +34,8 @@ export default function DashboardPage() {
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRaifPending, startRaifTransition] = useTransition();
+  const [raifResult, setRaifResult] = useState<RaifSyncResult | null>(null);
 
   const fetchParcels = async () => {
     setIsLoading(true);
@@ -80,6 +83,14 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSyncRaif = () => {
+    setRaifResult(null);
+    startRaifTransition(async () => {
+      const result = await syncRaifAlerts();
+      setRaifResult(result);
+    });
+  };
+
   return (
     <>
       <NavHeader />
@@ -93,13 +104,66 @@ export default function DashboardPage() {
               Monitoreo agrícola en tiempo real
             </p>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-          >
-            + Nueva parcela
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSyncRaif}
+              disabled={isRaifPending}
+              className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 transition-all hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+            >
+              {isRaifPending ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Evaluando RAIF...
+                </>
+              ) : (
+                <>Evaluar Alertas RAIF</>
+              )}
+            </button>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+            >
+              + Nueva parcela
+            </button>
+          </div>
         </div>
+
+        {raifResult && (
+          <div className={`mb-6 rounded-xl border p-4 ${raifResult.ok ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20" : "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20"}`}>
+            <div className="flex items-center justify-between">
+              <p className={`text-sm font-semibold ${raifResult.ok ? "text-green-800 dark:text-green-300" : "text-amber-800 dark:text-amber-300"}`}>
+                RAIF: {raifResult.succeeded}/{raifResult.total} parcelas evaluadas
+                {raifResult.failed > 0 && ` · ${raifResult.failed} errores`}
+                {raifResult.highAlerts > 0 && ` · ${raifResult.highAlerts} alertas alta`}
+                {raifResult.notificationsSent > 0 && ` · ${raifResult.notificationsSent} notificaciones enviadas`}
+              </p>
+              <button
+                onClick={() => setRaifResult(null)}
+                className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                Cerrar
+              </button>
+            </div>
+            {raifResult.details.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {raifResult.details.map((d, i) => (
+                  <p key={i} className="text-xs text-zinc-600 dark:text-zinc-400">
+                    <span className="font-medium">{d.parcelName}</span>
+                    {d.error
+                      ? <span className="text-red-600 dark:text-red-400"> — Error: {d.error}</span>
+                      : d.highAlerts > 0
+                        ? <span> — {d.highAlerts} alta {d.notified ? "· notificado" : `· ${d.reason ?? ""}`}</span>
+                        : <span> — Sin alertas high</span>
+                    }
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">

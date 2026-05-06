@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncSiarDataForParcel } from "@/lib/services/siar.service";
+import { isSiarEnabled, syncSiarDataForParcel } from "@/lib/services/siar.service";
 import { syncRiaDataForParcel } from "@/lib/services/ria.service";
 
 export const dynamic = "force-dynamic";
@@ -28,10 +28,14 @@ export async function GET(
     let siarError: string | null = null;
     let riaError: string | null = null;
 
-    try {
-      siarValue = await syncSiarDataForParcel(parcel.latitude, parcel.longitude);
-    } catch (error) {
-      siarError = error instanceof Error ? error.message : "Error SIAR";
+    if (isSiarEnabled()) {
+      try {
+        siarValue = await syncSiarDataForParcel(parcel.latitude, parcel.longitude);
+      } catch (error) {
+        siarError = error instanceof Error ? error.message : "Error SIAR";
+      }
+    } else {
+      siarError = "SIAR deshabilitado por configuración (SIAR_ENABLED=false).";
     }
 
     try {

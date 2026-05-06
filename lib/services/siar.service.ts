@@ -8,6 +8,7 @@ import {
 
 const SIAR_BASE_URL = "https://servicio.mapa.gob.es/siarapi/API/V1";
 const SIAR_TOKEN = process.env.SIAR_TOKEN ?? "";
+const SIAR_ENABLED = (process.env.SIAR_ENABLED ?? "true").toLowerCase() !== "false";
 const REQUEST_TIMEOUT_MS = 20_000;
 const SIAR_RETRY_MAX_ATTEMPTS = Number(process.env.SIAR_RETRY_MAX_ATTEMPTS ?? 4);
 const SIAR_RETRY_BASE_DELAY_MS = Number(process.env.SIAR_RETRY_BASE_DELAY_MS ?? 5000);
@@ -40,8 +41,25 @@ export interface SiarDailyData {
   et0: number | null;
 }
 
+export function isSiarEnabled(): boolean {
+  return SIAR_ENABLED;
+}
+
 const SIAR_STATIONS_CACHE = new Map<string, { data: SiarStation[]; expiresAt: number }>();
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : String(value ?? "");
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value.replace(",", ".").trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 function parseCoord(raw: string | undefined): number {
   if (!raw || typeof raw !== "string" || raw.length < 9) return 0;
@@ -124,6 +142,7 @@ async function siarFetch<T>(endpoint: string, params: Record<string, string> = {
 }
 
 export async function getSiarProvincias(): Promise<{ Codigo: string; Nombre: string }[]> {
+  if (!SIAR_ENABLED) return [];
   try {
     const response = await siarFetch<{ datos: { Codigo: string; Nombre: string }[] }>("/Info/PROVINCIAS");
     return response.datos || [];
@@ -134,28 +153,29 @@ export async function getSiarProvincias(): Promise<{ Codigo: string; Nombre: str
 }
 
 export async function getSiarEstaciones(idProvincia?: string): Promise<SiarStation[]> {
+  if (!SIAR_ENABLED) return [];
   const now = Date.now();
   const cacheKey = idProvincia ? `prov_${idProvincia}` : "all";
   const cached = SIAR_STATIONS_CACHE.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.data;
 
   try {
-    const response = await siarFetch<{ datos: any[] }>("/Info/ESTACIONES");
+    const response = await siarFetch<{ datos: Record<string, unknown>[] }>("/Info/ESTACIONES");
     let raw = response.datos || [];
     if (idProvincia) {
-      raw = raw.filter((s: any) =>
-        s.Codigo?.substring(0, 2) === idProvincia
+      raw = raw.filter((s) =>
+        String(s.Codigo ?? "").substring(0, 2) === idProvincia
       );
     }
-    const stations: SiarStation[] = raw.map((s: any) => ({
-      id: String(s.Codigo ?? ""),
-      nombre: String(s.Estacion ?? ""),
-      provincia: String(s.Codigo?.substring(0, 2) ?? ""),
-      idProvincia: String(s.Codigo?.substring(0, 2) ?? ""),
-      municipio: String(s.Termino ?? ""),
-      latitud: parseCoord(s.Latitud),
-      longitud: parseCoord(s.Longitud),
-      altitud: Number(s.Altitud ?? 0),
+    const stations: SiarStation[] = raw.map((s) => ({
+      id: asString(s.Codigo),
+      nombre: asString(s.Estacion),
+      provincia: asString(s.Codigo).substring(0, 2),
+      idProvincia: asString(s.Codigo).substring(0, 2),
+      municipio: asString(s.Termino),
+      latitud: parseCoord(asString(s.Latitud)),
+      longitud: parseCoord(asString(s.Longitud)),
+      altitud: asNumber(s.Altitud) ?? 0,
     }));
     SIAR_STATIONS_CACHE.set(cacheKey, { data: stations, expiresAt: Date.now() + CACHE_TTL_MS });
     return stations;
@@ -198,8 +218,9 @@ export async function getSiarDailyData(
   startDate: string,
   endDate: string
 ): Promise<SiarDailyData[]> {
+  if (!SIAR_ENABLED) return [];
   try {
-    const response = await siarFetch<{ datos: any[] }>("/Datos/Diarios/ESTACION", {
+    const response = await siarFetch<{ datos: Record<string, unknown>[] }>("/Datos/Diarios/ESTACION", {
       Id: idEstacion,
       FechaInicial: startDate,
       FechaFinal: endDate,
@@ -209,21 +230,21 @@ export async function getSiarDailyData(
 
     if (!Array.isArray(raw)) return [];
 
-    return raw.map((d: any) => ({
-      stationId: String(d.Estacion ?? idEstacion),
-      stationName: String(d.Estacion ?? ""),
-      date: String((d.Fecha ?? "").split("T")[0]),
-      maxTemp: d.TempMax ?? null,
-      minTemp: d.TempMin ?? null,
-      avgTemp: d.TempMedia ?? null,
-      maxHumidity: d.HumedadMax ?? null,
-      minHumidity: d.humedadMin ?? d.HumMin ?? null,
-      avgHumidity: d.HumedadMedia ?? null,
-      precipitation: d.Precipitacion ?? null,
-      windSpeed: d.VelViento ?? null,
-      windDirection: d.DirViento ?? null,
-      solarRadiation: d.Radiacion ?? null,
-      et0: d.EtPMon ?? d.ET0 ?? d.Et0 ?? null,
+    return raw.map((d) => ({
+      stationId: asString(d.Estacion) || idEstacion,
+      stationName: asString(d.Estacion),
+      date: asString(d.Fecha).split("T")[0],
+      maxTemp: asNumber(d.TempMax),
+      minTemp: asNumber(d.TempMin),
+      avgTemp: asNumber(d.TempMedia),
+      maxHumidity: asNumber(d.HumedadMax),
+      minHumidity: asNumber(d.humedadMin ?? d.HumMin),
+      avgHumidity: asNumber(d.HumedadMedia),
+      precipitation: asNumber(d.Precipitacion),
+      windSpeed: asNumber(d.VelViento),
+      windDirection: asNumber(d.DirViento),
+      solarRadiation: asNumber(d.Radiacion),
+      et0: asNumber(d.EtPMon ?? d.ET0 ?? d.Et0),
     }));
   } catch (error) {
     if (error instanceof SiarQuotaError && error.scope === "day") {
@@ -239,6 +260,14 @@ export async function syncSiarDataForParcel(
   lat: number,
   lon: number
 ): Promise<{ station: SiarStation | null; dailyData: SiarDailyData[]; error: string | null }> {
+  if (!SIAR_ENABLED) {
+    return {
+      station: null,
+      dailyData: [],
+      error: "SIAR deshabilitado por configuración (SIAR_ENABLED=false).",
+    };
+  }
+
   try {
     const stations = await getSiarAllStations();
     if (stations.length === 0) {

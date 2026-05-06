@@ -7,11 +7,15 @@ import WeatherCard from "@/app/components/weather-card";
 import AemetHourlySection from "@/app/components/dashboard/aemet-hourly-section";
 import IrrigationCalculator from "@/app/components/dashboard/irrigation-calculator";
 import StationWidget from "@/app/components/dashboard/station-widget";
+import WeatherAlerts from "@/app/components/dashboard/weather-alerts";
+import RaifAlerts from "@/app/components/dashboard/raif-alerts";
 import AiChat from "@/app/components/ai-chat";
 import { prisma } from "@/lib/prisma";
 import { syncRiaDataForParcel } from "@/lib/services/ria.service";
-import { syncSiarDataForParcel } from "@/lib/services/siar.service";
+import { isSiarEnabled, syncSiarDataForParcel } from "@/lib/services/siar.service";
 import { mapCropType, mapIrrigationType, getKcForDate } from "@/lib/services/irrigation.service";
+import { evaluateWeatherAlerts } from "@/lib/services/weather-alerts.service";
+import { evaluateRaifAlertsForParcel } from "@/lib/services/raif-alert-agent.service";
 
 export const dynamic = "force-dynamic";
 
@@ -74,11 +78,14 @@ export default async function ParcelDetailPage({ params }: Props) {
 
   let siarData: Awaited<ReturnType<typeof syncSiarDataForParcel>> | null = null;
   let riaData: Awaited<ReturnType<typeof syncRiaDataForParcel>> | null = null;
+  const siarEnabled = isSiarEnabled();
 
-  try {
-    siarData = await syncSiarDataForParcel(parcel.latitude, parcel.longitude);
-  } catch (error) {
-    console.error("Error syncing SIAR data:", error);
+  if (siarEnabled) {
+    try {
+      siarData = await syncSiarDataForParcel(parcel.latitude, parcel.longitude);
+    } catch (error) {
+      console.error("Error syncing SIAR data:", error);
+    }
   }
 
   try {
@@ -175,6 +182,54 @@ export default async function ParcelDetailPage({ params }: Props) {
     },
   };
 
+  const weatherAlertResult = evaluateWeatherAlerts({
+    cropId,
+    cropName: parcel.cropType,
+    parcelZone: parcel.zone,
+    microclimate: parcel.microclimate,
+    municipioNombre: parcel.municipioNombre,
+    latitude: parcel.latitude,
+    longitude: parcel.longitude,
+    dailyForecasts: forecasts.map((f) => ({
+      date: f.forecastDate.toISOString(),
+      maxTemp: f.maxTemp,
+      minTemp: f.minTemp,
+      precipitationProb: f.precipitationProb,
+      et0: f.et0,
+      source: f.source,
+    })),
+    hourlyForecasts: aemetHourly.map((h) => ({
+      date: h.forecastDate.toISOString(),
+      hour: h.hour,
+      temperature: h.temperature,
+      humidity: h.humidity,
+      windSpeed: h.windSpeed,
+      precipitationProb: h.precipitationProb,
+    })),
+    recentStationWeather: (riaWeather.length > 0 ? riaWeather : siarWeather).map((d) => ({
+      date: d.date,
+      et0: d.et0,
+      precipitation: d.precipitation,
+      temperature: d.temperature,
+      humidity: d.humidity,
+      windSpeed: d.windSpeed,
+    })),
+    latestSensor: latest
+      ? {
+          ambientTemp: latest.ambientTemp,
+          ambientHumidity: latest.ambientHumidity,
+          soilHumidity: latest.soilHumidity,
+        }
+      : null,
+  });
+
+  let raifAlertResult: Awaited<ReturnType<typeof evaluateRaifAlertsForParcel>> | null = null;
+  try {
+    raifAlertResult = await evaluateRaifAlertsForParcel(parcel.id);
+  } catch (error) {
+    console.error("Error evaluating RAIF alerts:", error);
+  }
+
   return (
     <>
       <NavHeader />
@@ -220,6 +275,9 @@ export default async function ParcelDetailPage({ params }: Props) {
             leafTemp: latest.leafTemp,
           } : null}
         />
+
+        <WeatherAlerts result={weatherAlertResult} />
+        <RaifAlerts result={raifAlertResult} />
 
         <StationWidget parcelId={parcel.id} />
 
