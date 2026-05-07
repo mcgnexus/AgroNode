@@ -25,9 +25,15 @@ export default function NavHeader() {
           </Link>
           <Link
             href="/dashboard"
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-green-700 transition-colors hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30"
+            className="rounded-md px-3 py-1.5 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-green-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-green-400"
           >
             Dashboard
+          </Link>
+          <Link
+            href="/iot"
+            className="rounded-md px-3 py-1.5 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-green-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-green-400"
+          >
+            IoT
           </Link>
         </nav>
       </div>

@@ -138,3 +138,38 @@ model RaifNotificationLog {
   @@index([parcelId, sentAt])
   @@unique([parcelId, signature, sentDay])
 }
+
+model Node {
+  id           String   @id @default(uuid()) @db.Uuid
+  nodeCode     String   @unique
+  name         String?
+  locationName String?
+  crop         String?
+  wifiSsid     String?
+  wifiPassword String?
+  apiToken     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  readings IoTReading[]
+}
+
+model IoTReading {
+  id                String   @id @default(cuid())
+  nodeId            String   @db.Uuid
+  measuredAt        DateTime
+  airTempC          Float?
+  airHumidityPct    Float?
+  pressureHpa       Float?
+  leafTempC         Float?
+  soilMoistureRaw   Int?
+  soilMoisturePct   Float?
+  batteryV          Float?
+  rssiDbm           Int?
+  createdAt         DateTime @default(now())
+
+  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, measuredAt])
+}
