@@ -158,6 +158,53 @@ export async function getNodeByCode(code: string): Promise<(IoTNode & { api_toke
   return node ? (node as IoTNode & { api_token: string }) : null;
 }
 
+export async function getNodeReadingCount(nodeCode: string): Promise<number> {
+  const result = await sql`
+    SELECT COUNT(*)::int as count
+    FROM sensor_readings sr
+    INNER JOIN nodes n ON n.id = sr.node_id
+    WHERE n.node_code = ${nodeCode}
+  `;
+  return result[0]?.count ?? 0;
+}
+
+export async function getNodeLatestReading(nodeCode: string): Promise<IoTReading | null> {
+  const readings = await sql`
+    SELECT 
+      sr.id::text,
+      sr.node_id::text,
+      sr.measured_at,
+      sr.air_temp_c::float,
+      sr.air_humidity_pct::float,
+      sr.pressure_hpa::float,
+      sr.leaf_temp_c::float,
+      sr.soil_moisture_raw,
+      sr.soil_moisture_pct::float,
+      sr.battery_v::float,
+      sr.rssi_dbm
+    FROM sensor_readings sr
+    INNER JOIN nodes n ON n.id = sr.node_id
+    WHERE n.node_code = ${nodeCode}
+    ORDER BY sr.measured_at DESC
+    LIMIT 1
+  `;
+  if (readings.length === 0) return null;
+  const r = readings[0];
+  return {
+    id: r.id as string,
+    node_id: r.node_id as string,
+    measured_at: new Date(r.measured_at as Date),
+    air_temp_c: r.air_temp_c as number | null,
+    air_humidity_pct: r.air_humidity_pct as number | null,
+    pressure_hpa: r.pressure_hpa as number | null,
+    leaf_temp_c: r.leaf_temp_c as number | null,
+    soil_moisture_raw: r.soil_moisture_raw as number | null,
+    soil_moisture_pct: r.soil_moisture_pct as number | null,
+    battery_v: r.battery_v as number | null,
+    rssi_dbm: r.rssi_dbm as number | null,
+  };
+}
+
 export async function createReading(data: {
   node_id: string;
   measured_at?: Date;

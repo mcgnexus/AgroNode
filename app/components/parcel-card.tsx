@@ -15,6 +15,7 @@ interface ParcelSummary {
   microclimate: string | null;
   description: string | null;
   irrigationType: string | null;
+  nodeCode: string | null;
   createdAt: string | Date;
   totalReadings: number;
   lastReading: {

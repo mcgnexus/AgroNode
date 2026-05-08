@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingestReadingSchema } from "@/lib/validations/iot";
 import { getNodeByCode, createReading } from "@/lib/iot-db";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -52,6 +53,32 @@ export async function POST(request: NextRequest) {
       battery_v,
       rssi_dbm,
     });
+
+    // Duplicar lectura en SensorData (DB principal) si el nodo está vinculado a una parcela
+    const parcel = await prisma.parcel.findUnique({
+      where: { nodeCode: node_code },
+    });
+
+    if (parcel) {
+      try {
+        await prisma.sensorData.create({
+          data: {
+            parcelId: parcel.id,
+            timestamp: reading.measured_at,
+            ambientTemp: air_temp_c ?? 0,
+            ambientHumidity: air_humidity_pct ?? 0,
+            atmosphericPressure: pressure_hpa ?? 0,
+            leafTemp: leaf_temp_c ?? 0,
+            soilHumidity: soil_moisture_pct ?? 0,
+            batteryLevel: battery_v ?? null,
+            rssi: rssi_dbm ?? null,
+          },
+        });
+      } catch (syncError) {
+        console.error("Error duplicando lectura en SensorData:", syncError);
+        // No fallar la ingesta principal por error de duplicado
+      }
+    }
 
     return NextResponse.json(
       {

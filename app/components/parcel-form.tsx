@@ -15,6 +15,7 @@ interface ParcelFormData {
   microclimate?: string | null;
   description?: string | null;
   irrigationType?: string | null;
+  nodeCode?: string | null;
 }
 
 interface ParcelFormProps {
@@ -70,6 +71,7 @@ export default function ParcelForm({
     microclimate: initialData?.microclimate ?? "",
     description: initialData?.description ?? "",
     irrigationType: initialData?.irrigationType ?? "",
+    nodeCode: initialData?.nodeCode ?? "",
   });
 
   const [selectedZone, setSelectedZone] = useState<string>(initialData?.zone ?? "");
@@ -286,6 +288,23 @@ export default function ParcelForm({
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Código de nodo IoT
+        </label>
+        <input
+          type="text"
+          name="nodeCode"
+          value={formData.nodeCode ?? ""}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800"
+          placeholder="Ej: ANODE-001"
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Vincula esta parcela a un nodo IoT existente para que sus lecturas aparezcan en el dashboard.
+        </p>
       </div>
 
       <div>

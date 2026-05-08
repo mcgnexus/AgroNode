@@ -119,23 +119,31 @@ export async function getLatestSensorData(
 
   if (sensorData) return sensorData;
 
-  const nodes = await getNodesWithLatestReading();
-  const node = nodes.find((n) => n.sensor_readings.length > 0);
-  if (!node) return null;
+  const parcel = await prisma.parcel.findUnique({
+    where: { id: parcelId },
+    select: { nodeCode: true },
+  });
 
-  const r = node.sensor_readings[0];
+  if (parcel?.nodeCode) {
+    const nodes = await getNodesWithLatestReading();
+    const node = nodes.find((n) => n.node_code === parcel.nodeCode && n.sensor_readings.length > 0);
+    if (node) {
+      const r = node.sensor_readings[0];
+      return {
+        id: r.id.toString(),
+        timestamp: typeof r.measured_at === "string" ? new Date(r.measured_at) : r.measured_at,
+        ambientTemp: r.air_temp_c ?? 0,
+        ambientHumidity: r.air_humidity_pct ?? 0,
+        atmosphericPressure: r.pressure_hpa ?? 0,
+        leafTemp: r.leaf_temp_c ?? 0,
+        soilHumidity: r.soil_moisture_pct ?? 0,
+        batteryLevel: r.battery_v ?? 0,
+        rssi: r.rssi_dbm ?? 0,
+      };
+    }
+  }
 
-  return {
-    id: r.id.toString(),
-    timestamp: typeof r.measured_at === "string" ? new Date(r.measured_at) : r.measured_at,
-    ambientTemp: r.air_temp_c ?? 0,
-    ambientHumidity: r.air_humidity_pct ?? 0,
-    atmosphericPressure: r.pressure_hpa ?? 0,
-    leafTemp: r.leaf_temp_c ?? 0,
-    soilHumidity: r.soil_moisture_pct ?? 0,
-    batteryLevel: r.battery_v ?? 0,
-    rssi: r.rssi_dbm ?? 0,
-  };
+  return null;
 }
 
 export async function get24HourSensorHistory(
@@ -162,23 +170,29 @@ export async function get24HourSensorHistory(
 
   if (history.length > 0) return history;
 
-  const nodes = await getNodesWithLatestReading();
-  const firstNode = nodes.find((n) => n.sensor_readings.length > 0);
-  if (!firstNode) return [];
+  const parcel = await prisma.parcel.findUnique({
+    where: { id: parcelId },
+    select: { nodeCode: true },
+  });
 
-  const iotReadings = await getNodeReadings(firstNode.node_code, 100);
+  if (parcel?.nodeCode) {
+    const iotReadings = await getNodeReadings(parcel.nodeCode, 100);
+    if (iotReadings.length > 0) {
+      return iotReadings.map((r) => ({
+        id: r.id.toString(),
+        timestamp: typeof r.measured_at === "string" ? new Date(r.measured_at) : r.measured_at,
+        ambientTemp: r.air_temp_c ?? 0,
+        ambientHumidity: r.air_humidity_pct ?? 0,
+        atmosphericPressure: r.pressure_hpa ?? 0,
+        leafTemp: r.leaf_temp_c ?? 0,
+        soilHumidity: r.soil_moisture_pct ?? 0,
+        batteryLevel: r.battery_v ?? 0,
+        rssi: r.rssi_dbm ?? 0,
+      }));
+    }
+  }
 
-  return iotReadings.map((r) => ({
-    id: r.id.toString(),
-    timestamp: typeof r.measured_at === "string" ? new Date(r.measured_at) : r.measured_at,
-    ambientTemp: r.air_temp_c ?? 0,
-    ambientHumidity: r.air_humidity_pct ?? 0,
-    atmosphericPressure: r.pressure_hpa ?? 0,
-    leafTemp: r.leaf_temp_c ?? 0,
-    soilHumidity: r.soil_moisture_pct ?? 0,
-    batteryLevel: r.battery_v ?? 0,
-    rssi: r.rssi_dbm ?? 0,
-  }));
+  return [];
 }
 
 export async function getWeeklyForecast(

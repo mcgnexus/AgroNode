@@ -11,6 +11,7 @@ import WeatherAlerts from "@/app/components/dashboard/weather-alerts";
 import RaifAlerts from "@/app/components/dashboard/raif-alerts";
 import AiChat from "@/app/components/ai-chat";
 import { prisma } from "@/lib/prisma";
+import { getNodeReadings, getNodeReadingCount } from "@/lib/iot-db";
 import { syncRiaDataForParcel } from "@/lib/services/ria.service";
 import { isSiarEnabled, syncSiarDataForParcel } from "@/lib/services/siar.service";
 import { mapCropType, mapIrrigationType, getKcForDate } from "@/lib/services/irrigation.service";
@@ -21,6 +22,28 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ id: string }>;
+}
+
+function DetailIcon({ name, className = "h-4 w-4" }: { name: "back" | "parcel" | "crop" | "location" | "reading" | "forecast" | "ai"; className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {name === "back" && <><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></>}
+      {name === "parcel" && <><path d="M3 20h18" /><path d="M5 20V8l7-4 7 4v12" /><path d="M9 20v-6h6v6" /></>}
+      {name === "crop" && <><path d="M5 19c9.5.5 14-5 14-14-9 0-14 4.5-14 14Z" /><path d="M5 19 15 9" /></>}
+      {name === "location" && <><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z" /><circle cx="12" cy="10" r="2" /></>}
+      {name === "reading" && <><path d="M4 19V5" /><path d="M4 19h16" /><path d="m7 15 3-4 3 2 4-7" /></>}
+      {name === "forecast" && <><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.3 2" /><path d="M6 19h11.5" /></>}
+      {name === "ai" && <><path d="M12 3v3" /><path d="M12 18v3" /><path d="M5.6 5.6 7.8 7.8" /><path d="M16.2 16.2l2.2 2.2" /><circle cx="12" cy="12" r="4" /></>}
+    </svg>
+  );
+}
+
+function CountPill({ icon, label }: { icon: Parameters<typeof DetailIcon>[0]["name"]; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-[10px] font-semibold text-zinc-600 ring-1 ring-zinc-200 dark:bg-zinc-900/60 dark:text-zinc-300 dark:ring-zinc-800 sm:text-xs">
+      <DetailIcon name={icon} className="h-3.5 w-3.5" />{label}
+    </span>
+  );
 }
 
 export default async function ParcelDetailPage({ params }: Props) {
@@ -42,17 +65,40 @@ export default async function ParcelDetailPage({ params }: Props) {
   const since48h = new Date();
   since48h.setHours(since48h.getHours() - 48);
 
-  const sensorHistory = await prisma.sensorData.findMany({
+  let sensorHistory = await prisma.sensorData.findMany({
     where: { parcelId: id, timestamp: { gte: since48h } },
     orderBy: { timestamp: "asc" },
   });
+
+  // Fallback a lecturas IoT del nodo vinculado a esta parcela
+  if (sensorHistory.length === 0 && parcel.nodeCode) {
+    const iotReadings = await getNodeReadings(parcel.nodeCode, 100);
+    sensorHistory = iotReadings.map((r) => ({
+      id: r.id.toString(),
+      parcelId: id,
+      timestamp: typeof r.measured_at === "string" ? new Date(r.measured_at) : r.measured_at,
+      ambientTemp: r.air_temp_c ?? 0,
+      ambientHumidity: r.air_humidity_pct ?? 0,
+      atmosphericPressure: r.pressure_hpa ?? 0,
+      leafTemp: r.leaf_temp_c ?? 0,
+      soilHumidity: r.soil_moisture_pct ?? 0,
+      batteryLevel: r.battery_v ?? null,
+      rssi: r.rssi_dbm ?? null,
+      createdAt: new Date(),
+    }));
+  }
+
+  let iotReadingsCount = 0;
+  if (parcel.nodeCode && parcel._count.sensorData === 0) {
+    iotReadingsCount = await getNodeReadingCount(parcel.nodeCode);
+  }
+
+  const latest = parcel.sensorData[0] ?? (sensorHistory.length > 0 ? sensorHistory[sensorHistory.length - 1] : null);
 
   const forecasts = await prisma.weatherForecast.findMany({
     where: { parcelId: id },
     orderBy: { forecastDate: "asc" },
   });
-
-  const latest = parcel.sensorData[0];
 
   const chartData = sensorHistory.map((s) => ({
     timestamp: s.timestamp.toISOString(),
@@ -233,32 +279,34 @@ export default async function ParcelDetailPage({ params }: Props) {
   return (
     <>
       <NavHeader />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="mb-6">
+      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8">
+        <div className="mb-6 overflow-hidden rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 via-white to-cyan-50 p-4 dark:border-green-950/40 dark:from-green-950/30 dark:via-zinc-950 dark:to-cyan-950/20 sm:p-5">
           <Link
             href="/"
-            className="mb-3 inline-flex items-center gap-1 text-sm text-zinc-500 transition-colors hover:text-green-600 dark:text-zinc-400 dark:hover:text-green-400"
+            className="mb-3 inline-flex items-center gap-1 text-xs font-medium text-zinc-500 transition-colors hover:text-green-600 dark:text-zinc-400 dark:hover:text-green-400 sm:text-sm"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
+            <DetailIcon name="back" className="h-4 w-4" />
             Volver al Dashboard
           </Link>
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
-                {parcel.name}
-              </h1>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                {parcel.cropType} &middot; {parcel.latitude}°N, {Math.abs(parcel.longitude)}°O
-              </p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-green-600 text-white shadow-sm sm:h-12 sm:w-12">
+                <DetailIcon name="parcel" className="h-5 w-5 sm:h-6 sm:w-6" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-bold text-zinc-900 dark:text-zinc-100 sm:text-2xl">
+                  {parcel.name}
+                </h1>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400 sm:text-sm">
+                  <span className="inline-flex items-center gap-1"><DetailIcon name="crop" className="h-4 w-4" />{parcel.cropType}</span>
+                  <span className="inline-flex items-center gap-1"><DetailIcon name="location" className="h-4 w-4" />{parcel.latitude}°N, {Math.abs(parcel.longitude)}°O</span>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-2 text-xs text-zinc-400 dark:text-zinc-500">
-              <span>{parcel._count.sensorData} lecturas</span>
-              <span>&middot;</span>
-              <span>{parcel._count.weatherForecasts} pronósticos</span>
-              <span>&middot;</span>
-              <span>{parcel._count.aiInteractionLogs} consultas AI</span>
+            <div className="flex flex-wrap gap-2">
+              <CountPill icon="reading" label={`${iotReadingsCount || parcel._count.sensorData} lecturas`} />
+              <CountPill icon="forecast" label={`${parcel._count.weatherForecasts} pronósticos`} />
+              <CountPill icon="ai" label={`${parcel._count.aiInteractionLogs} consultas AI`} />
             </div>
           </div>
         </div>

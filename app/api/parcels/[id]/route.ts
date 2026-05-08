@@ -58,6 +58,7 @@ export async function PUT(
         microclimate: body.microclimate ?? existing.microclimate,
         description: body.description ?? existing.description,
         irrigationType: body.irrigationType ?? existing.irrigationType,
+        nodeCode: body.nodeCode !== undefined ? body.nodeCode : existing.nodeCode,
       },
     });
 

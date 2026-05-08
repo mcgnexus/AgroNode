@@ -27,6 +27,7 @@ model Parcel {
   microclimate    String?
   description    String?
   irrigationType  String?
+  nodeCode        String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
