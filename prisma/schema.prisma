@@ -69,6 +69,7 @@ model WeatherForecast {
   parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
 
   @@unique([parcelId, forecastDate, source])
+  @@index([parcelId, forecastDate])
 }
 
 model AemetHourlyForecast {
@@ -104,6 +105,25 @@ model AiInteractionLog {
   createdAt     DateTime      @default(now())
 
   parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, timestamp])
+}
+
+model AlertThreshold {
+  id          String   @id @default(cuid())
+  cropType    String
+  alertType   String
+  severity    String   @default("high")
+  field       String
+  operator    String
+  threshold   Float
+  unit        String
+  enabled     Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([cropType, alertType, field])
 }
 
 model RaifAlertCache {

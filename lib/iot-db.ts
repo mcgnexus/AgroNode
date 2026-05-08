@@ -30,59 +30,71 @@ export interface IoTReading {
 }
 
 export async function getNodesWithLatestReading(): Promise<(IoTNode & { sensor_readings: IoTReading[] })[]> {
-  const nodes = await sql`
+  const result = await sql`
     SELECT 
-      id,
-      node_code,
-      name,
-      location_name,
-      crop,
-      active
-    FROM nodes
-    ORDER BY created_at DESC
-  `;
-
-  const result: (IoTNode & { sensor_readings: IoTReading[] })[] = [];
-
-  for (const node of nodes) {
-    const readings = await sql`
-      SELECT 
-        id::text,
-        node_id::text,
-        measured_at,
-        air_temp_c::float,
-        air_humidity_pct::float,
-        pressure_hpa::float,
-        leaf_temp_c::float,
-        soil_moisture_raw,
-        soil_moisture_pct::float,
-        battery_v::float,
-        rssi_dbm
+      n.id::text as id,
+      n.node_code::text as node_code,
+      n.name,
+      n.location_name,
+      n.crop,
+      n.active,
+      sr.id::text as reading_id,
+      sr.node_id::text as reading_node_id,
+      sr.measured_at,
+      sr.air_temp_c::float,
+      sr.air_humidity_pct::float,
+      sr.pressure_hpa::float,
+      sr.leaf_temp_c::float,
+      sr.soil_moisture_raw,
+      sr.soil_moisture_pct::float,
+      sr.battery_v::float,
+      sr.rssi_dbm
+    FROM nodes n
+    LEFT JOIN LATERAL (
+      SELECT id, node_id, measured_at, air_temp_c, air_humidity_pct, 
+             pressure_hpa, leaf_temp_c, soil_moisture_raw, soil_moisture_pct, 
+             battery_v, rssi_dbm
       FROM sensor_readings
-      WHERE node_id = ${node.id}
+      WHERE node_id = n.id
       ORDER BY measured_at DESC
       LIMIT 1
-    `;
+    ) sr ON true
+    ORDER BY n.created_at DESC
+  `;
 
-    const nodeResult: IoTNode = {
-      id: node.id as string,
-      node_code: node.node_code as string,
-      name: node.name as string | null,
-      location_name: node.location_name as string | null,
-      crop: node.crop as string | null,
-      active: Boolean(node.active),
-    };
+  const nodesMap = new Map<string, IoTNode & { sensor_readings: IoTReading[] }>();
 
-    result.push({
-      ...nodeResult,
-      sensor_readings: readings.map(r => ({
-        ...r,
-        measured_at: new Date(r.measured_at),
-      })) as IoTReading[],
-    });
+  for (const row of result) {
+    if (!nodesMap.has(row.id)) {
+      nodesMap.set(row.id, {
+        id: row.id,
+        node_code: row.node_code,
+        name: row.name,
+        location_name: row.location_name,
+        crop: row.crop,
+        active: Boolean(row.active),
+        sensor_readings: [],
+      });
+    }
+    
+    if (row.reading_id) {
+      nodesMap.get(row.id)!.sensor_readings.push({
+        id: row.reading_id,
+        node_id: row.reading_node_id,
+        measured_at: new Date(row.measured_at),
+        air_temp_c: row.air_temp_c,
+        air_humidity_pct: row.air_humidity_pct,
+        pressure_hpa: row.pressure_hpa,
+        leaf_temp_c: row.leaf_temp_c,
+        soil_moisture_raw: row.soil_moisture_raw,
+        soil_moisture_pct: row.soil_moisture_pct,
+        battery_v: row.battery_v,
+        rssi_dbm: row.rssi_dbm,
+      });
+    }
   }
 
-  return result;
+  return Array.from(nodesMap.values());
 }
 
 export async function getNodeReadings(nodeCode: string, limit: number = 100): Promise<IoTReading[]> {

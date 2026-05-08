@@ -5,14 +5,41 @@ import { syncForecastForParcel } from "@/lib/services/weather.service";
 export async function GET() {
   const parcels = await prisma.parcel.findMany({
     orderBy: { createdAt: "desc" },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      latitude: true,
+      longitude: true,
+      cropType: true,
+      locationId: true,
+      municipioId: true,
+      municipioNombre: true,
+      zone: true,
+      microclimate: true,
+      description: true,
+      irrigationType: true,
+      createdAt: true,
       _count: { select: { sensorData: true } },
-      sensorData: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
     },
   });
+
+  const parcelIds = parcels.map((p) => p.id);
+  
+  const lastReadings = await prisma.sensorData.findMany({
+    where: { parcelId: { in: parcelIds } },
+    orderBy: { timestamp: "desc" },
+    distinct: ["parcelId"],
+    select: {
+      parcelId: true,
+      id: true,
+      timestamp: true,
+      ambientTemp: true,
+      ambientHumidity: true,
+      soilHumidity: true,
+    },
+  });
+
+  const readingsMap = new Map(lastReadings.map((r) => [r.parcelId, r]));
 
   const result = parcels.map((p) => ({
     id: p.id,
@@ -29,7 +56,7 @@ export async function GET() {
     irrigationType: p.irrigationType,
     createdAt: p.createdAt,
     totalReadings: p._count.sensorData,
-    lastReading: p.sensorData[0] ?? null,
+    lastReading: readingsMap.get(p.id) ?? null,
   }));
 
   return NextResponse.json(result);

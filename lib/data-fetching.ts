@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getNodesWithLatestReading, getNodeReadings } from "@/lib/iot-db";
 
 export interface ParcelSummary {
   id: string;
@@ -70,9 +71,21 @@ export async function getAllParcels(): Promise<
       latitude: true,
       longitude: true,
       _count: { select: { sensorData: true } },
-      sensorData: { orderBy: { timestamp: "desc" }, take: 1, select: { timestamp: true } },
     },
   });
+
+  if (parcels.length === 0) return [];
+
+  const parcelIds = parcels.map((p) => p.id);
+
+  const lastReadings = await prisma.sensorData.findMany({
+    where: { parcelId: { in: parcelIds } },
+    orderBy: { timestamp: "desc" },
+    distinct: ["parcelId"],
+    select: { parcelId: true, timestamp: true },
+  });
+
+  const readingsMap = new Map(lastReadings.map((r) => [r.parcelId, r.timestamp]));
 
   return parcels.map((p) => ({
     id: p.id,
@@ -81,14 +94,14 @@ export async function getAllParcels(): Promise<
     latitude: p.latitude,
     longitude: p.longitude,
     totalReadings: p._count.sensorData,
-    lastReadingAt: p.sensorData[0]?.timestamp ?? null,
+    lastReadingAt: readingsMap.get(p.id) ?? null,
   }));
 }
 
 export async function getLatestSensorData(
   parcelId: string
 ): Promise<SensorReading | null> {
-  return prisma.sensorData.findFirst({
+  const sensorData = await prisma.sensorData.findFirst({
     where: { parcelId },
     orderBy: { timestamp: "desc" },
     select: {
@@ -103,6 +116,26 @@ export async function getLatestSensorData(
       rssi: true,
     },
   });
+
+  if (sensorData) return sensorData;
+
+  const nodes = await getNodesWithLatestReading();
+  const node = nodes.find((n) => n.sensor_readings.length > 0);
+  if (!node) return null;
+
+  const r = node.sensor_readings[0];
+
+  return {
+    id: r.id.toString(),
+    timestamp: typeof r.measured_at === "string" ? new Date(r.measured_at) : r.measured_at,
+    ambientTemp: r.air_temp_c ?? 0,
+    ambientHumidity: r.air_humidity_pct ?? 0,
+    atmosphericPressure: r.pressure_hpa ?? 0,
+    leafTemp: r.leaf_temp_c ?? 0,
+    soilHumidity: r.soil_moisture_pct ?? 0,
+    batteryLevel: r.battery_v ?? 0,
+    rssi: r.rssi_dbm ?? 0,
+  };
 }
 
 export async function get24HourSensorHistory(
@@ -111,7 +144,7 @@ export async function get24HourSensorHistory(
   const since = new Date();
   since.setHours(since.getHours() - 24);
 
-  return prisma.sensorData.findMany({
+  const history = await prisma.sensorData.findMany({
     where: { parcelId, timestamp: { gte: since } },
     orderBy: { timestamp: "asc" },
     select: {
@@ -126,6 +159,26 @@ export async function get24HourSensorHistory(
       rssi: true,
     },
   });
+
+  if (history.length > 0) return history;
+
+  const nodes = await getNodesWithLatestReading();
+  const firstNode = nodes.find((n) => n.sensor_readings.length > 0);
+  if (!firstNode) return [];
+
+  const iotReadings = await getNodeReadings(firstNode.node_code, 100);
+
+  return iotReadings.map((r) => ({
+    id: r.id.toString(),
+    timestamp: typeof r.measured_at === "string" ? new Date(r.measured_at) : r.measured_at,
+    ambientTemp: r.air_temp_c ?? 0,
+    ambientHumidity: r.air_humidity_pct ?? 0,
+    atmosphericPressure: r.pressure_hpa ?? 0,
+    leafTemp: r.leaf_temp_c ?? 0,
+    soilHumidity: r.soil_moisture_pct ?? 0,
+    batteryLevel: r.battery_v ?? 0,
+    rssi: r.rssi_dbm ?? 0,
+  }));
 }
 
 export async function getWeeklyForecast(
